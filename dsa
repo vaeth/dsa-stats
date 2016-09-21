@@ -2,51 +2,45 @@
 
 $|=1; # Write output immediately
 
-$table='';
-$order=2;
-$smin[0]=-5; $smax[0]=9;
-$smin[1]=$smin[2]=$smin[3]=8;
-$smax[1]=$smax[2]=$smax[3]=14;
-#$smax[1]=$smax[2]=$smax[3]=14; $smax[2]=16;
+$table=0;
+$smin=8; $smax=15; $mmin=-7; $mmax=17;
+#$smin=8; $smax=14; $mmin=-5; $mmax=9;
 $point='';
 $wide='verywide';
-$breaking=3;
-$debug='';
-$cut=1;
-$emptypage="\\pagestyle{empty}\\thispagestyle{empty}\n";
-$frame='';
-$gate='';
-$round=1;
-$fraction=1;
+$linebreak=21;
+$pagebreak=120;
+$breaking=0;
+$draft='';
+$round=2;
+$stacking=2;
+$quiet='';
+$frame=1;
+$gate=1;
+$fontsize="\n\\tiny";
 
 sub help { $0 =~ /(\w*)(\.\w*)?$/; print STDERR <<"EOHELP";
-Usage: $1 [option] ... [option] [1-8 numbers resp. -/+]
+Usage: $1 stat stat stat modifier
+or     $1 -t|T [option] ... [option] [statmin [statmax [mod_min [mod_max]]]]
+       (default ranges are   $smin...$smax  resp.  $mmin...$mmax)
 Purpose: Calculate the effective probability of DSA values resp. make a list.
 The probabilities depend on four parameters: Three stats and a modifier.
-The stats are typically about 5..18, and the modifier about -8..20.
-You can call this program in two ways:
-With four numbers as an argument, it just calculates the pure probability.
-The numbers have the order: modifier stat stat stat.
-With option -t, it calculates a tabular in LaTeX.
-each two consecutive numbers denote the range of the corresponding value.
-The default ranges are:  $smin[0]..$smax[0]  $smin[1]..$smax[1]  $smin[2]..$smax[2]  $smin[3]..$smax[3]
-If you leave out trailing parameters or replace a parameter by '-' or '+', the
-default value is used. Alternatively, you may use the options to modify only
-certain default values.
-Options are explained by examples:
-  -t       Calculate the table, using modifier as dimension $order.
-  -t1..4   Calculate the table, using modifier as dimension 1..4.
-  -s3min-1 Use -1 as the minimum value for status 3.
-  -mmax3   Use 3 as the maximum value for the modifier.
-  -full    Make a full list, i.e. do not delete redundant tables.
-  -12pt    Use 12 point font.
-  -wider   Pass option `wider` to package a4sizes (default: $wide)
-  -break3  Write at most 3 tables in a line (this is the default)
-  -noempty Do not set default pagestyle empty
-  -pedant  Round to 0.1\% if result is less than 10\% (only for table)
-  -gate/frame Draw more lines (requires more space)
-  -corner  Change the default look of the "title-corner" of each table
-  --       last option
+Without any option, the program outputs only a single probability.
+With option -t or -T, it calculates a tabular in LaTeX.
+  -t/T     Calculate the table, writing modifier vertically/horizontally
+  -break*  Linebreak/Pagebreak after * entries (default: *=$linebreak/$pagebreak)
+  -noframe Do not draw right and lower line for table
+  -Frame   Draw frame around the whole table
+  -nogate  Do not draw horizontal lines
+  -*pt     Use * point font (*=10,11,12)
+  -wide/wider/veryhigh Pass as option to package a4sizes (default: $wide)
+  -round   Round always to 0.1\% always (default: only if result \<10\%)
+  -rough   Round only to 1\%
+  -pedant  Never round
+  -nostack Do not stack the titles
+  -sstack/nstack Stack the titles, using scriptsize/normal font (in -t mode)
+  -normal/scriptsize Use normalsize/scriptsize instead of tiny througout
+  -draftxx Do not actually calculate the probabilities, just use entry xx
+  -quiet   Do not print progress dots
 EOHELP
 exit;
 }
@@ -55,389 +49,346 @@ while (($_=$ARGV[0]) =~ /^-.*\D/)
 {
   shift;
   if(/^-((wider?)|(verywide))$/){ $wide="$1" }
-  elsif (/^-(1[12]pt)$/)        { $point="$1," }
-  elsif (/^-10pt$/)             { $point="" }
-  elsif (/^-full$/i)            { $cut='' }
-  elsif (/^-frame$/i)           { $frame=1 }
-  elsif (/^-gate$/i)            { $gate=1 }
-  elsif (/^-pedant$/i)          { $round='' }
-  elsif (/^-corner$/i)          { $fraction='' }
-  elsif (/^-break(\d+)/)        { $breaking=scalar($1); &help if($breaking<=0)}
-  elsif (/^-break/)             { $breaking=scalar($ARGV[0]); shift;
+  elsif (/^-t$/)                { $table=1 }
+  elsif (/^-T$/)                { $table=2 }
+  elsif (/^-break(\d+)$/)       { $breaking=scalar($1); &help if($breaking<=0)}
+  elsif (/^-break$/)            { $breaking=scalar($ARGV[0]); shift;
                                   &help if($breaking<=0) }
-  elsif (/^-t([1-4])?$/i)       { $table=1; if("$1" ne ""){ $order=scalar($1)}}
-  elsif (/^-s([1-3])min$/i)     { $smin[scalar($1)]=scalar($ARGV[0]); shift }
-  elsif (/^-s([1-3])min([+-]?\d+)$/i) { $smin[scalar($1)]=scalar($2) }
-  elsif (/^-s([1-3])max$/i)     { $smax[scalar($1)]=scalar($ARGV[0]); shift }
-  elsif (/^-s([1-3])max([+-]?\d+)$/i) { $smax[scalar($1)]=scalar($2) }
-  elsif (/^-mmin([+-]?\d+)$/i)  { $smin[0]=scalar($1) }
-  elsif (/^-mmin$/i)            { $smin[0]=scalar($ARGV[0]); shift }
-  elsif (/^-mmax([+-]?\d+)$/i)  { $smax[0]=scalar($1) }
-  elsif (/^-mmax$/i)            { $smax[0]=scalar($ARGV[0]); shift }
-  elsif (/^-noempty$/i)         { $emptypage='' }
-  elsif (/^-debug$/i)           { $debug=1 }
-  elsif (/^--$/)                { last }
+  elsif (/^-noframe$/i)         { $frame=0 }
+  elsif (/^-frame$/)            { $frame=1 }
+  elsif (/^-Frame$/)            { $frame=2 }
+  elsif (/^-nogate$/i)          { $gate='' }
+  elsif (/^-gate$/i)            { $gate=1 }
+  elsif (/^-(1[12]pt)$/)        { $point="$1," }
+  elsif (/^-10pt$/)             { $point='' }
+  elsif (/^-pedant$/i)          { $round=0 }
+  elsif (/^-round$/i)           { $round=1 }
+  elsif (/^-roundten$/i)        { $round=2 }
+  elsif (/^-rough$/i)           { $round=3 }
+  elsif (/^-nostack$/i)         { $stacking=0 }
+  elsif (/^-tstack$/i)          { $stacking=1 }
+  elsif (/^-sstack$/i)          { $stacking=2 }
+  elsif (/^-nstack$/i)          { $stacking=3 }
+  elsif (/^-normal$/i)          { $fontsize="" }
+  elsif (/^-scriptsize$/i)      { $fontsize="\n\\scriptsize" }
+  elsif (/^-tiny$/i)            { $fontsize="\n\\tiny" }
+  elsif (/^-draft(.*)$/)        { $draft=1; $draftentry="$1" }
+  elsif (/^-quiet$/)            { $quiet=1 }
   else  {&help}
 }
 
 # We calculate only a single probability, not a TeX table:
 
-unless($table)
+if($table==0)
 {
-  if(($_=$ARGV[0]) =~ /^[+-]?\d+/) {$m=scalar($_) ; shift } else {&help}
   if(($_=$ARGV[0]) =~ /^[+-]?\d+/) {$s1=scalar($_); shift } else {&help}
   if(($_=$ARGV[0]) =~ /^[+-]?\d+/) {$s2=scalar($_); shift } else {&help}
   if(($_=$ARGV[0]) =~ /^[+-]?\d+/) {$s3=scalar($_); shift } else {&help}
-  print &prob($s1,$s2,$s3,$m) . " %\n";
+  if(($_=$ARGV[0]) =~ /^[+-]?\d+/) {$m=scalar($_) ; shift } else {&help}
+  &help if("$ARGV[0]" ne "");
+  $round=0; &printprob; print " %\n";
   exit;
 }
 
-# If we calculate a TeX table, read the eight parameters:
+# If no explicit option for breaking was given, use the corresponding default
 
-for($i=0;$i<=3;$i++)
+if($breaking<=0)
 {
-  if(($_=$ARGV[0]) ne "")
-  {
-    unless(/^[+-]?(\d+)/) { &help }
-    if("$1" ne "") { $smin[$i]=scalar($ARGV[0]) }
-  }
-  shift;
-  if(($_=$ARGV[0]) ne "")
-  {
-    unless(/^[+-]?(\d+)/) { &help }
-    if("$1" ne "") { $smax[$i]=scalar($ARGV[0]) }
-  }
-  shift;
+  if($table==1)
+    { $breaking=$linebreak }
+  else
+    { $breaking=$pagebreak }
 }
 
-# Now @cmin and @cmax become reorders of @smin and @smax
-# (in the order of the dimensions).
-# Moreover, $cnum[$j] gives the value which is contained in dimension $j.
+# Now we read the (optional) ranges.
 
-$modifier=$order-1;
-for($i=0;$i<=3;$i++)
+if(($_=$ARGV[0]) =~ /^[+-]?\d+/)
 {
-  $j=$i;
-  if($i<$modifier)
-    { $j++ }
-  elsif($i==$modifier)
-    { $j=0 }
-  $cmin[$i]=$smin[$j]; $cmax[$i]=$smax[$j];
-  $cnum[$j]=$i;
-  if($cmin[$i]>$cmax[$i]) { &help }
-}
-$factor=$cmax[3]-$cmin[3]+1;
-
-# The main printing loop:
-
-$lastbreak=0;
-&head3;
-for($c[3]=$cmin[3];$c[3]<=$cmax[3];$c[3]++)
-{
-  &head2;
-  for($c[2]=$cmin[2];$c[2]<=$cmax[2];$c[2]++)
+  $smin=scalar($_); shift;
+  if(($_=$ARGV[0]) =~ /^[+-]?\d+/)
   {
-    if($cut && ($modifier<2))
+    $smax=scalar($_); shift;
+    if(($_=$ARGV[0]) =~ /^[+-]?\d+/)
     {
-      # At first, we avoid an obvious "triangle" of double tables:
-      next if(&cuttriangle($c[2],$c[3]));
-
-      # The rest is tested straightforwardly:
-      if(&cutting($c[2],$c[3],""))
-      { # If we are allowed to cut, then we cut and forbid certain other cuts:
-        &cutting($c[2],$c[3],1);
-        &setcutted($c[2],$c[3]);
-        next;
-      }
-    }
-    &head1;
-    for($c[1]=$cmin[1];$c[1]<=$cmax[1];$c[1]++)
-    {
-      &head0;
-      for($c[0]=$cmin[0];$c[0]<=$cmax[0];$c[0]++)
+      $mmin=scalar($_); shift;
+      if(($_=$ARGV[0]) =~ /^[+-]?\d+/)
       {
-        &entry;
-        if($c[0]<$cmax[0]) { &sep0 }
+        $mmax=scalar($_); shift;
       }
-      &foot0;
-      if($c[1]<$cmax[1]) { &sep1 }
     }
-    &foot1;
   }
-  &foot2;
-  if($c[3]<$cmax[3]) { &sep3 }
 }
-&foot3;
+&help if("$ARGV[0]" ne "");
+&help if(($smin>$smax)||($mmin>$mmax));
 
-# Now we define the TeX insertions:
+$stackstring="\\def\\entries\#1\#2\#3{\#1\$\\mid\$\#2\$\\mid\$\#3}\n";
+if($table==1)
+{
+  if($stacking==1)
+  {
+    $stackstring="\\def\\entries\#1\#2\#3{\\tiny\$\\matrix{\\mbox{\\tiny\#1}\\\\\\\mbox{\\tiny\#2}\\\\\\\mbox{\\tiny\#3}}\$}\n"
+  }
+  elsif($stacking==2)
+  {
+    $stackstring="\\def\\entries\#1\#2\#3{\\scriptsize\$\\matrix{\\mbox{\\scriptsize\#1}\\\\\\\mbox{\\scriptsize\#2}\\\\\\\mbox{\\scriptsize\#3}}\$}\n"
+  }
+  elsif($stacking==3)
+  {
+    $stackstring="\\def\\entries\#1\#2\#3{\$\\matrix{\\mbox{\#1}\\\\\\\mbox{\#2}\\\\\\\mbox{\#3}}\$}\n"
+  }
+}
+else
+{
+  if($stacking>0)
+    { $stackstring='' }
+}
 
-sub head3
-{ print <<"EO3HEAD";
+print <<"EOHEAD";
 \\documentclass[${point}a4paper,oneside]{article}
 \\usepackage[$wide,veryhigh]{a4sizes}
-\\advance\\textheight2cm
 \\parindent0pt
-$emptypage
-\\begin{document}
+\\pagestyle{empty}\\thispagestyle{empty}
+$stackstring
+\\begin{document}$fontsize
+EOHEAD
 
-EO3HEAD
-}
+$innernewline="\\\\\n";
+$lastnewline="\n";
+if($gate)
+  { $innernewline="\\\\\\hline\n" }
+if($frame)
+  { $lastnewline="\\\\\\hline\n" }
 
-sub sep3 {}
+$s1=$smin; $s2=$smin; $s3=$smin;
 
-sub foot3
-{ print <<"EO3FOOT";
-
-\\end{document}
-EO3FOOT
-}
-
-sub head2
+if($table==1)
 {
-#$lastbreak=0;
-#print <<"EO2HEAD";
-#\\subsubsection\*{$c[3]}
-#EO2HEAD
+  $remain=($smax-$smin+1);
+  $remain=$remain*($remain+1)*($remain+2)/6;
+  while($remain>0)
+  {
+    if($breaking>$remain)
+      {$breaking=$remain}
+    print "\\begin{tabular}{";
+    if($frame>1) { print "|" }
+    print "r\|" . "|r" x $breaking;
+    if($frame>0) { print "|" }
+    print "}";
+    if($frame>1) { print "\\hline" }
+    print "\n";
+    &status_save;
+    for($i=0;$i<$breaking;$i++)
+    {
+      print "&\\entries{$s1}{$s2}{$s3}";
+      &status_advance;
+    }
+    print "\\\\\\hline\\hline\n";
+    for($m=$mmin;$m<=$mmax;$m++)
+    {
+      &status_restore;
+      print "$m";
+      unless($quiet) {print STDERR "$s1\|$s2\|$s3 ($m) " }
+      for($i=0;$i<$breaking;$i++)
+      {
+        print "&";
+        &printprob;
+        &status_advance;
+        unless($quiet) { print STDERR "." }
+      }
+      unless($quiet) { print STDERR "\n" }
+      if($m<$mmax) { print $innernewline }
+      else         { print $lastnewline  }
+    }
+    print "\\end{tabular}";
+    if(($remain-=$breaking)>0)
+      { print "\\\\\n\\medskip\n" }
+    print "\n";
+  }
 }
-
-sub foot2 {}
-
-sub head1
+else
 {
-  local($i);
-  if($lastbreak++>=$breaking)
-    { $lastbreak=1; print "\\\\\\medskip\n\n" }
-  print '\\begin{tabular}{r|';
-  for($i=$cmin[0];$i<=$cmax[0];$i++) { print '|r' }
-  if($frame) { print "\|" }
-  if($fraction)
-    { print "}\n\$\\frac{$c[3]}{$c[2]}\$&" }
-  else
-    { print "}\n$c[3]\$\\mid\$$c[2]&" }
-  for($i=$cmin[0];$i<$cmax[0];$i++) { print "$i\&" }
-  print "$cmax[0]\\\\\\hline\\hline\n";
-  print STDERR "$c[3]\|$c[2]";
+  $finish="";
+  while(!($finish))
+  {
+    print "\\begin{tabular}{";
+    if($frame>1) { print "|" }
+    if($stacking>0) { print "r\|r\|r\|" }
+    else { print "r\|" }
+    print "\|r" x ($mmax-$mmin+1);
+    if($frame>0) { print "\|" }
+    print "}";
+    if($frame>1) { print "\\hline" }
+    print "\n";
+    if($stacking>0) { print "\\multicolumn{2}{r}{DSA}\&" }
+    for($m=$mmin;$m<=$mmax;$m++) { print "&$m" }
+    print "\\\\\\hline\\hline\n";
+    for($i=0;;$i++)
+    {
+      if($stacking>0)
+        { print "$s1&$s2&$s3" }
+      else
+        { print "\\entries{$s1}{$s2}{$s3}" }
+      unless($quiet) {print STDERR "$s1\|$s2\|$s3" }
+      for($m=$mmin;$m<=$mmax;$m++)
+      {
+        print "&"; &printprob;
+        unless($quiet) { print STDERR "." }
+      }
+      unless($quiet) { print STDERR "\n" }
+      $finish=&status_advance;
+      if(($finish)||($i==$breaking))
+      {
+        print $lastnewline;
+        last
+      }
+      print $innernewline;
+    }
+    print "\\end{tabular}\n";
+    unless($finish) { print "\n\\pagebreak\n" }
+  }
 }
+print "\n\\end{document}";
 
-sub sep1
+# End of the main program
+
+
+sub status_save    { $s1save=$s1; $s2save=$s2; $s3save=$s3 }
+sub status_restore { $s1=$s1save; $s2=$s2save; $s3=$s3save }
+sub status_advance
 {
-  if($gate)
-    { print "\\\\\\hline\n" }
-  else
-    { print "\\\\\n" }
-}
-
-sub foot1
-{
-  if($frame)
-    { print "\\\\\\hline\n" }
-  else
-    { print "\n" }
-  print "\\end{tabular}\n";
-  print STDERR "\n";
-}
-
-sub head0
-{ print "$c[1]\t\&" }
-
-sub sep0
-{ print "&" }
-
-sub foot0
-{
-  print STDERR " "
-}
-
-sub entry
-{
-  local($result,$roundto,$minus);
-  if($debug)
-    { print "99"; return }
-  $result=&count($c[$cnum[0]],$c[$cnum[1]],$c[$cnum[2]],$c[$cnum[3]]);
-  $roundto=80;
-  if((!$round)&&($result<800))
-    { $roundto=8 }
-  $minus=$result % $roundto;
-  $result-=$minus;
-  if($adder<$roundto/2)
-    { $result+=$roundto }
-  print $result/80;
-  print STDERR ".";
-}
-
-# This function tests whether the table $f|$e also arises as $e|$f and thus
-# is completely unnecessary.
-
-sub cuttriangle
-{
-  local($e,$f)=@_;
-  if(($cmin[3]<=$e) && ($e<$f) && ($f<=$cmax[2]))
-    { return 1 }
+  if(++$s3>$smax)
+  {
+    if(++$s2>$smax)
+    {
+      if(++$s1>$smax)
+        { return 1 }
+      $s2=$s1;
+    }
+    $s3=$s2;
+  }
   return ""
 }
 
-# This function tests straightforwardly whether the table $s|$t may be cut.
-# It is required that $s and $t be in the admissible ranges (and not in
-# the cut triangle).
-# If $forbid is set, then those tables which may not be cut in the future, are
-# marked as noncuttable. This makes only sense if you have tested before that
-# you are allowed to cut $t|$s and if you have decided to actually cut it.
-
-sub cutting
+sub printprob
 {
-  local($s,$t,$forbid,$u)=@_;
-  # If the cut $t|$s is not forbidden by our previous cuts, we do not cut:
-  if(&isnevercut($s,$t))
-    { return "" }
-  # Now we test all possible combinations for the last enty:
-  for($u=$smin[1];$u<=$smax[1];$u++)
+  local($result,$roundto,$minus);
+  if($draft)
+    { return "$draftentry" }
+  $result=&count;
+  $roundto=0;
+  if($round>0)
   {
-    # We may test from the four tables $u|$s, $s|$u, $t|$u, $u|$t
-    # those which are different from the given table $t|$s.
-    # The first of these combinations which is admissible (if some)
-    # is forbidden for future cuts (if $forbid is set)
-    if($u!=$s)
+    $roundto=80;
+    if($round<3)
     {
-      if(&isfree($u,$t,$s))
-      {
-        if($forbid)
-          { &nevercut($u,$t) }
-        next
-      }
+      if(($round==1)||($result<800))
+        { $roundto=8 }
     }
-    if(($u!=$s)||($s!=$t))
-    {
-      if(&isfree($u,$s,$t))
-      {
-        if($forbid)
-          { &nevercut($s,$u) }
-        next
-      }
-    }
-    if($u!=$t)
-    {
-      if(&isfree($s,$u,$t))
-      {
-        if($forbid)
-          { &nevercut($s,$u) }
-        next
-      }
-    }
-    if(($u!=$t)||($s!=$t))
-    {
-      if(&isfree($t,$u,$s))
-      {
-        if($forbid)
-          { &nevercut($t,$u) }
-        next
-      }
-    }
-    return ""
+    $minus=$result % $roundto;
+    $result-=$minus;
+    if($minus>=$roundto/2)
+      { $result+=$roundto }
+    if(($round==2)&&($result>=800)) # Maybe we rounded UP to 10%!
+      { $roundto=80 }
   }
-  return 1
-}
-
-sub isfree
-{
-  local($x,$y,$z)=@_;
-  # Is the table one of the eliminated triangular entries?
-  # Then it is of course not free.
-  if(($cmin[3]<=$x) && ($x<$y) && ($y<=$cmax[2]))
-    { return "" }
-  # Are the entries in the admissible ranges?
-  if(($cmin[2]>$x) || ($cmax[2]<$x) ||
-     ($cmin[3]>$y) || ($cmax[3]<$y) ||
-     ($smin[1]>$z) || ($smax[1]<$z))
-    { return "" }
-  # Now we have only to check that we have not already cut this table:
-  if(&iscutted($x,$y))
-    { return "" }
-  return 1
-}
-
-sub nevercut
-{
-  local($a,$b)=@_;
-  $nevercutflag[($a-$cmin[2])*$factor+($b-$cmin[3])]=1
-}
-
-sub isnevercut
-{
-  local($a,$b)=@_;
-  return $nevercutflag[($a-$cmin[2])*$factor+($b-$cmin[3])]
-}
-
-sub setcutted
-{
-  local($a,$b)=@_;
-  $cuttedflag[($a-$cmin[2])*$factor+($b-$cmin[3])]=1
-}
-
-sub iscutted
-{
-  local($a,$b)=@_;
-  return $cuttedflag[($a-$cmin[2])*$factor+($b-$cmin[3])]
-}
-
-
-sub prob
-{
-  local($m,$s1,$s2,$s3)=@_;
-  return &count($m,$s1,$s2,$s3)/80;
+  $result/=80;
+  if($roundto==8)
+    { printf "%.1f",$result }
+  else
+    { print $result }
 }
 
 sub count
 {
-  local($m,$s1,$s2,$s3,$i1,$i2,$i3,$c,$t)=@_;
+  local($i1,$i2,$i3,$m1,$m2,$c);
   $c=0;
   if($m>=0)
   {
     for($i1=1;$i1<=20;$i1++)
     {
+      if($i1>$s1+$m)   # Do we have lost, unless a double 1 occurs?
+      {
+        if($i1==1)     # Is another 1 sufficient?
+          { $c+=39 }   # 39=20+19
+        else
+          { $c++ }
+        next
+      }
+      $m1=$m;
+      if($i1>$s1)
+        { $m1-=$i1-$s1 }
       for($i2=1;$i2<=20;$i2++)
       {
-        if(($i1==20)&&($i2==20))
-          { return($c+20) }
-        next if(($i1==1)&&($i2==1));
+        if(($i1==1)&&($i2==1)) # Do we have a double 1?
+          { $c+=20; next }     # Bingo! All values of $i3 are wins!
+        next if(($i1==20)&&($i2==20));# Loose, if the first two die show 20.
+        if($i2>$s2+$m1)        # Do we have lost, unless a double 1 occurs?
+        {
+          if(($i1==1)||($i2==1)) # Do we have a 1 (actually precisely one 1!)
+            { $c++ }
+          next
+        }
+        $m2=$m1;
+        if($i2>$s2)
+          { $m2-=$i2-$s2 }
         for($i3=1;$i3<=20;$i3++)
         {
-          next if(($i3==1)&&(($i1==1)||($i2==1)));
-          if(($i3==20)&&(($i1==20)||($i2==20)))
-            { $c++; next }
-          $t=$m;
-          if($i1>$s1)
-            { $t-=$i1-$s1 }
-          if($i2>$s2)
-            { $t-=$i2-$s2 }
-          if($i3>$s3)
-            { $t-=$i3-$s3 }
-          if($t>=0)
-            { $c++ }
+          if($i3>$s3+$m2)      # Do we have lost, unless a double 1 occurs?
+          {
+            if($i3==1)
+            {
+              if(($i1==1)||($i2==1))
+                { $c++ }
+            }
+            next
+          }
+          # Now we have won, unless a double 20 occurs
+          if($i3==20) { next if(($i1==20)||($i2==20)) }
+          $c++
         }
       }
     }
   }
-  for($i1=1;$i1<=20;$i1++)
+  else # The game with negative modification:
   {
-    for($i2=1;$i2<=20;$i2++)
+    for($i1=1;$i1<=20;$i1++)
     {
-      if(($i1==20)&&($i2==20))
-        { return($c+20) }
-      next if(($i1==1)&&($i2==1));
-      for($i3=1;$i3<=20;$i3++)
+      if($i1>$s1)      # Do we have lost, unless a double 1 occurs?
       {
-        next if(($i3==1)&&(($i1==1)||($i2==1)));
-        if(($i3==20)&&(($i1==20)||($i2==20)))
-          { $c++; next }
-        next if($i1>$s1+$m);
-        $t=$m+($s1-$i1);
-        if($t>0) { $t=0 }
-        next if($i2>$s2+$t);
-        $t+=$s2-$i2;
-        if($t>0) { $t=0 }
-        if($i3<=$s3+$t)
+        if($i1==1)     # Is another 1 sufficient?
+          { $c+=39 }   # 39=20+19
+        else
           { $c++ }
+        next
+      }
+      for($i2=1;$i2<=20;$i2++)
+      {
+        if(($i1==1)&&($i2==1)) # Do we have a double 1?
+          { $c+=20; next }     # Bingo! All values of $i3 are wins!
+        next if(($i1==20)&&($i2==20));# Loose, if the first two die show 20.
+        if($i2>$s2)    # Do we have lost, unless a double 1 occurs?
+        {
+          if(($i1==1)||($i2==1)) # Do we have a 1 (actually precisely one 1!)
+            { $c++ }
+          next
+        }
+        for($i3=1;$i3<=20;$i3++)
+        {
+          if(($i3>$s3)||($i1+$i2+$i3>$s1+$s2+$s3+$m)) # Do we have lost...?
+          {
+            if($i3==1)
+            {
+              if(($i1==1)||($i2==1))
+                { $c++ }
+            }
+            next
+          }
+          # Now we have won, unless a double 20 occurs
+          if($i3==20) { next if(($i1==20)||($i2==20)) }
+          $c++
+        }
       }
     }
   }
+  return $c
 }
