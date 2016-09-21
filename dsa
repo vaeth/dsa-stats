@@ -1,394 +1,418 @@
 #!/usr/bin/perl
+use integer;
+use strict;
+use warnings;
 
-$|=1; # Write output immediately
+my $table = 0;
+my ($smin, $smax, $mmin, $mmax) = (8, 15, -7, 17);
+# = (8, 14, -5, 9);
+my $point = '';
+my $wide = 'verywide';
+my $linebreak = 21;
+my $pagebreak = 120;
+my $breaking = 0;
+my $draft = '';
+my $draftentry = '';
+my $round = 2;
+my $stacking = 2;
+my $quiet = '';
+my $frame = 1;
+my $gate = 1;
+my $fontsize = "\n\\tiny";
+my ($s1, $s2, $s3, $m);
+my ($s1save, $s2save, $s3save);
 
-$table=0;
-$smin=8; $smax=15; $mmin=-7; $mmax=17;
-#$smin=8; $smax=14; $mmin=-5; $mmax=9;
-$point='';
-$wide='verywide';
-$linebreak=21;
-$pagebreak=120;
-$breaking=0;
-$draft='';
-$round=2;
-$stacking=2;
-$quiet='';
-$frame=1;
-$gate=1;
-$fontsize="\n\\tiny";
-
-sub help { $0 =~ /(\w*)(\.\w*)?$/; print STDERR <<"EOHELP";
+sub usage {
+	$0 =~ m{(\w*)(\.\w*)?$};
+	print(STDERR <<"EOHELP");
 Usage: $1 stat stat stat modifier
 or     $1 -t|T [option] ... [option] [statmin [statmax [mod_min [mod_max]]]]
        (default ranges are   $smin...$smax  resp.  $mmin...$mmax)
-Purpose: Calculate the effective probability of DSA values resp. make a list.
+Calculate the effective probabilities of given DSA (\"Das schwarze Auge\")
+stat value or make a list, respectively.
 The probabilities depend on four parameters: Three stats and a modifier.
 Without any option, the program outputs only a single probability.
-With option -t or -T, it calculates a tabular in LaTeX.
-  -t/T     Calculate the table, writing modifier vertically/horizontally
-  -break*  Linebreak/Pagebreak after * entries (default: *=$linebreak/$pagebreak)
-  -noframe Do not draw right and lower line for table
-  -Frame   Draw frame around the whole table
-  -nogate  Do not draw horizontal lines
-  -*pt     Use * point font (*=10,11,12)
-  -wide/wider/veryhigh Pass as option to package a4sizes (default: $wide)
-  -round   Round always to 0.1\% always (default: only if result \<10\%)
-  -rough   Round only to 1\%
-  -pedant  Never round
-  -nostack Do not stack the titles
-  -sstack/nstack Stack the titles, using scriptsize/normal font (in -t mode)
-  -normal/scriptsize Use normalsize/scriptsize instead of tiny througout
-  -draftxx Do not actually calculate the probabilities, just use entry xx
-  -quiet   Do not print progress dots
+With option -t or -T, a list for LaTeX is output: When using this option,
+redirect stdout to some .tex file and translate that file with LaTeX.
+  -t/T      Calculate the table, writing modifier vertically/horizontally
+  --break*  Linebreak/Pagebreak after * entries (default: *=$linebreak/$pagebreak)
+  --noframe Do not draw right and lower line for table
+  --Frame   Draw frame around the whole table
+  --nogate  Do not draw horizontal lines
+  --*pt     Use * point font (*=10,11,12)
+  --wide/wider/veryhigh Pass as option to package a4sizes (default: $wide)
+  --round   Round always to 0.1\% always (default: only if result \<10\%)
+  --rough   Round only to 1\%
+  --pedant  Never round
+  --nostack Do not stack the titles
+  --sstack/nstack Stack the titles, using scriptsize/normal font (in -t mode)
+  --normal/scriptsize Use normalsize/scriptsize instead of tiny througout
+  --draftxx Do not actually calculate the probabilities, just use entry xx
+  --quiet   Do not print progress dots
+AUTHOR: Martin Vaeth \<martin\@mvaeth.de\>
+This program is under the MIT license
 EOHELP
-exit;
+	exit(0)
 }
 
-while (($_=$ARGV[0]) =~ /^-.*\D/)
-{
-  shift;
-  if(/^-((wider?)|(verywide))$/){ $wide="$1" }
-  elsif (/^-t$/)                { $table=1 }
-  elsif (/^-T$/)                { $table=2 }
-  elsif (/^-break(\d+)$/)       { $breaking=scalar($1); &help if($breaking<=0)}
-  elsif (/^-break$/)            { $breaking=scalar($ARGV[0]); shift;
-                                  &help if($breaking<=0) }
-  elsif (/^-noframe$/i)         { $frame=0 }
-  elsif (/^-frame$/)            { $frame=1 }
-  elsif (/^-Frame$/)            { $frame=2 }
-  elsif (/^-nogate$/i)          { $gate='' }
-  elsif (/^-gate$/i)            { $gate=1 }
-  elsif (/^-(1[12]pt)$/)        { $point="$1," }
-  elsif (/^-10pt$/)             { $point='' }
-  elsif (/^-pedant$/i)          { $round=0 }
-  elsif (/^-round$/i)           { $round=1 }
-  elsif (/^-roundten$/i)        { $round=2 }
-  elsif (/^-rough$/i)           { $round=3 }
-  elsif (/^-nostack$/i)         { $stacking=0 }
-  elsif (/^-tstack$/i)          { $stacking=1 }
-  elsif (/^-sstack$/i)          { $stacking=2 }
-  elsif (/^-nstack$/i)          { $stacking=3 }
-  elsif (/^-normal$/i)          { $fontsize="" }
-  elsif (/^-scriptsize$/i)      { $fontsize="\n\\scriptsize" }
-  elsif (/^-tiny$/i)            { $fontsize="\n\\tiny" }
-  elsif (/^-draft(.*)$/)        { $draft=1; $draftentry="$1" }
-  elsif (/^-quiet$/)            { $quiet=1 }
-  else  {&help}
+while(@ARGV && (($_ = $ARGV[0]) =~ m{^-.*\D})) {
+	shift();
+	if(m{^--((wider?)|(verywide))$}) {
+		$wide = $1
+	} elsif(m{^-t$}) {
+		$table = 1
+	} elsif(m{^-T$}) {
+		$table = 2
+	} elsif(m{^--break(\d+)$}) {
+		$breaking = $1;
+		&usage() if($breaking <= 0)
+	} elsif(m{^--break$}) {
+		$breaking = $ARGV[0];
+		shift();
+		&usage() if($breaking <= 0)
+	} elsif(m{^--noframe$}i) {
+		$frame = 0
+	} elsif(m{^--frame$}) {
+		$frame = 1
+	} elsif(m{^--Frame$}) {
+		$frame = 2
+	} elsif(m{^--nogate$}i) {
+		$gate = ''
+	} elsif(m{^--gate$}i) {
+		$gate = 1
+	} elsif(m{^--(1[12]pt)$}) {
+		$point = "$1,"
+	} elsif(m{^--10pt$}) {
+		$point = ''
+	} elsif(m{^--pedant$}i) {
+		$round = 0
+	} elsif(m{^--round$}i) {
+		$round = 1
+	} elsif(m{^--roundten$}i) {
+		$round = 2
+	} elsif(m{^--rough$}i) {
+		$round = 3
+	} elsif(m{^--nostack$}i) {
+		$stacking = 0
+	} elsif(m{^--tstack$}i) {
+		$stacking = 1
+	} elsif(m{^--sstack$}i) {
+		$stacking = 2
+	} elsif(m{^--nstack$}i) {
+		$stacking = 3
+	} elsif(m{^--normal$}i) {
+		$fontsize = ''
+	} elsif(m{^--scriptsize$}i) {
+		$fontsize = "\n\\scriptsize"
+	} elsif(m{^--tiny$}i) {
+		$fontsize = "\n\\tiny"
+	} elsif(m{^--draft(.*)$}) {
+		$draft = 1;
+		$draftentry = $1
+	} elsif(m{^--quiet$}) {
+		$quiet = 1
+	} else {
+		&usage()
+	}
 }
 
 # We calculate only a single probability, not a TeX table:
 
-if($table==0)
-{
-  if(($_=$ARGV[0]) =~ /^[+-]?\d+/) {$s1=scalar($_); shift } else {&help}
-  if(($_=$ARGV[0]) =~ /^[+-]?\d+/) {$s2=scalar($_); shift } else {&help}
-  if(($_=$ARGV[0]) =~ /^[+-]?\d+/) {$s3=scalar($_); shift } else {&help}
-  if(($_=$ARGV[0]) =~ /^[+-]?\d+/) {$m=scalar($_) ; shift } else {&help}
-  &help if("$ARGV[0]" ne "");
-  $round=0; &printprob; print " %\n";
-  exit;
+if($table == 0) {
+	if(@ARGV && (($_ = $ARGV[0]) =~ m{^[+-]?\d+})) {
+		$s1 = $_;
+		shift()
+	} else {
+		&usage()
+	}
+	if(@ARGV && (($_ = $ARGV[0]) =~ m{^[+-]?\d+})) {
+		$s2 = $_;
+		shift()
+	} else {
+		&usage()
+	}
+	if(@ARGV && (($_ = $ARGV[0]) =~ m{^[+-]?\d+})) {
+		$s3= $_;
+		shift()
+	} else {
+		&usage()
+	}
+	if(@ARGV && (($_ = $ARGV[0]) =~ m{^[+-]?\d+})) {
+		$m = $_;
+		shift()
+	} else {
+		&usage()
+	}
+	&usage() if(@ARGV);
+	$round = 0;
+	&printprob();
+	print(" \%\n");
+	exit(0)
 }
 
 # If no explicit option for breaking was given, use the corresponding default
 
-if($breaking<=0)
-{
-  if($table==1)
-    { $breaking=$linebreak }
-  else
-    { $breaking=$pagebreak }
-}
+$breaking = (($table == 1) ? $linebreak : $pagebreak) if($breaking <= 0);
 
 # Now we read the (optional) ranges.
 
-if(($_=$ARGV[0]) =~ /^[+-]?\d+/)
-{
-  $smin=scalar($_); shift;
-  if(($_=$ARGV[0]) =~ /^[+-]?\d+/)
-  {
-    $smax=scalar($_); shift;
-    if(($_=$ARGV[0]) =~ /^[+-]?\d+/)
-    {
-      $mmin=scalar($_); shift;
-      if(($_=$ARGV[0]) =~ /^[+-]?\d+/)
-      {
-        $mmax=scalar($_); shift;
-      }
-    }
-  }
+if(@ARGV && (($_ = $ARGV[0]) =~ m{^[+-]?\d+})) {
+	$smin = scalar($_);
+	shift();
+	if(@ARGV && (($_ = $ARGV[0]) =~ m{^[+-]?\d+})) {
+		$smax = scalar($_);
+		shift();
+		if(@ARGV && (($_=$ARGV[0]) =~ m{^[+-]?\d+})) {
+			$mmin = scalar($_);
+			shift();
+			if(@ARGV && (($_ = $ARGV[0]) =~ m{^[+-]?\d+})) {
+				$mmax = scalar($_);
+				shift()
+			}
+		}
+	}
 }
-&help if("$ARGV[0]" ne "");
-&help if(($smin>$smax)||($mmin>$mmax));
+&usage() if(@ARGV);
+&usage() if(($smin > $smax) || ($mmin > $mmax));
 
-$stackstring="\\def\\entries\#1\#2\#3{\#1\$\\mid\$\#2\$\\mid\$\#3}\n";
-if($table==1)
-{
-  if($stacking==1)
-  {
-    $stackstring="\\def\\entries\#1\#2\#3{\\tiny\$\\matrix{\\mbox{\\tiny\#1}\\\\\\\mbox{\\tiny\#2}\\\\\\\mbox{\\tiny\#3}}\$}\n"
-  }
-  elsif($stacking==2)
-  {
-    $stackstring="\\def\\entries\#1\#2\#3{\\scriptsize\$\\matrix{\\mbox{\\scriptsize\#1}\\\\\\\mbox{\\scriptsize\#2}\\\\\\\mbox{\\scriptsize\#3}}\$}\n"
-  }
-  elsif($stacking==3)
-  {
-    $stackstring="\\def\\entries\#1\#2\#3{\$\\matrix{\\mbox{\#1}\\\\\\\mbox{\#2}\\\\\\\mbox{\#3}}\$}\n"
-  }
-}
-else
-{
-  if($stacking>0)
-    { $stackstring='' }
+my $stackstring = "\\def\\entries\#1\#2\#3{\#1\$\\mid\$\#2\$\\mid\$\#3}\n";
+if($table == 1) {
+	if($stacking == 1) {
+		$stackstring = "\\def\\entries\#1\#2\#3{\\tiny\$\\matrix{\\mbox{\\tiny\#1}\\\\\\mbox{\\tiny\#2}\\\\\\mbox{\\tiny\#3}}\$}\n"
+	} elsif($stacking == 2) {
+		$stackstring="\\def\\entries\#1\#2\#3{\\scriptsize\$\\matrix{\\mbox{\\scriptsize\#1}\\\\\\mbox{\\scriptsize\#2}\\\\\\mbox{\\scriptsize\#3}}\$}\n"
+	} elsif($stacking == 3) {
+		$stackstring="\\def\\entries\#1\#2\#3{\$\\matrix{\\mbox{\#1}\\\\\\mbox{\#2}\\\\\\mbox{\#3}}\$}\n"
+	}
+} else {
+	$stackstring = '' if($stacking > 0)
 }
 
-print <<"EOHEAD";
-\\documentclass[${point}a4paper,oneside]{article}
-\\usepackage[$wide,veryhigh]{a4sizes}
+print(<<"EOHEAD");
+\\documentclass\[${point}a4paper,oneside\]\{article\}
+\\usepackage\[$wide,veryhigh\]\{a4sizes\}
 \\parindent0pt
-\\pagestyle{empty}\\thispagestyle{empty}
+\\pagestyle\{empty\}\\thispagestyle\{empty\}
 $stackstring
-\\begin{document}$fontsize
+\\begin\{document\}$fontsize
 EOHEAD
 
-$innernewline="\\\\\n";
-$lastnewline="\n";
-if($gate)
-  { $innernewline="\\\\\\hline\n" }
-if($frame)
-  { $lastnewline="\\\\\\hline\n" }
+my $innernewline = ($gate ? "\\\\\\hline\n" : "\\\\\n");
+my $lastnewline = ($frame ? "\\\\\\hline\n" : "\n");
+$s1 = $s2 = $s3 = $smin;
 
-$s1=$smin; $s2=$smin; $s3=$smin;
-
-if($table==1)
-{
-  $remain=($smax-$smin+1);
-  $remain=$remain*($remain+1)*($remain+2)/6;
-  while($remain>0)
-  {
-    if($breaking>$remain)
-      {$breaking=$remain}
-    print "\\begin{tabular}{";
-    if($frame>1) { print "|" }
-    print "r\|" . "|r" x $breaking;
-    if($frame>0) { print "|" }
-    print "}";
-    if($frame>1) { print "\\hline" }
-    print "\n";
-    &status_save;
-    for($i=0;$i<$breaking;$i++)
-    {
-      print "&\\entries{$s1}{$s2}{$s3}";
-      &status_advance;
-    }
-    print "\\\\\\hline\\hline\n";
-    for($m=$mmin;$m<=$mmax;$m++)
-    {
-      &status_restore;
-      print "$m";
-      unless($quiet) {print STDERR "$s1\|$s2\|$s3 ($m) " }
-      for($i=0;$i<$breaking;$i++)
-      {
-        print "&";
-        &printprob;
-        &status_advance;
-        unless($quiet) { print STDERR "." }
-      }
-      unless($quiet) { print STDERR "\n" }
-      if($m<$mmax) { print $innernewline }
-      else         { print $lastnewline  }
-    }
-    print "\\end{tabular}";
-    if(($remain-=$breaking)>0)
-      { print "\\\\\n\\medskip\n" }
-    print "\n";
-  }
+if($table == 1) {
+	my $remain = ($smax - $smin + 1);
+	$remain = $remain * ($remain + 1) * ($remain + 2) / 6;
+	while($remain > 0) {
+		$breaking = $remain if($breaking > $remain);
+		print("\\begin\{tabular\}\{");
+		print('|') if($frame > 1);
+		print("r\|" . "|r" x $breaking);
+		print('|') if($frame > 0);
+		print('}');
+		print("\\hline") if($frame > 1);
+		print("\n");
+		&status_save();
+		for(my $i = 0; $i < $breaking; ++$i) {
+			print("\&\\entries\{$s1\}\{$s2\}\{$s3\}");
+			&status_advance()
+		}
+		print("\\\\\\hline\\hline\n");
+		for($m = $mmin; $m <= $mmax; ++$m) {
+			&status_restore();
+			print($m);
+			print(STDERR "$s1\|$s2\|$s3 ($m) ") unless($quiet);
+			for(my $i = 0; $i < $breaking; $i++) {
+				print('&');
+				&printprob();
+				&status_advance();
+				print(STDERR '.') unless($quiet);
+			}
+			print(STDERR "\n") unless($quiet);
+			print(($m < $mmax) ? $innernewline : $lastnewline);
+		}
+		print("\\end\{tabular\}");
+		print("\\\\\n\\medskip\n") if(($remain -= $breaking) > 0);
+		print("\n");
+	}
+} else {
+	my $finish = '';
+	while(!$finish) {
+		print("\\begin\{tabular\}\{");
+		print('|') if($frame>1);
+		print(($stacking > 0) ? "r\|r\|r\|" : "r\|");
+		print("\|r" x ($mmax - $mmin + 1));
+		print('|') if($frame > 0);
+		print('}');
+		print("\\hline") if($frame>1);
+		print("\n");
+		print("\\multicolumn\{2\}\{r\}\{DSA\}\&") if($stacking > 0);
+		for($m = $mmin; $m <= $mmax; ++$m) {
+			print("\&$m")
+		}
+		print("\\\\\\hline\\hline\n");
+		for(my $i = 0; ; ++$i) {
+			if($stacking > 0) {
+				print("$s1\&$s2\&$s3")
+			} else {
+				print("\\entries\{$s1\}\{$s2\}\{$s3\}")
+			}
+			unless($quiet) {print(STDERR "$s1\|$s2\|$s3") }
+			for($m = $mmin; $m <= $mmax; $m++) {
+				print("&");
+				&printprob();
+				print(STDERR '.') unless($quiet);
+			}
+			print(STDERR "\n") unless($quiet);
+			$finish = &status_advance();
+			if($finish || ($i == $breaking)) {
+				print($lastnewline);
+				last
+			}
+			print($innernewline)
+		}
+		print("\\end{tabular}\n");
+		print("\n\\pagebreak\n") unless($finish)
+	}
 }
-else
-{
-  $finish="";
-  while(!($finish))
-  {
-    print "\\begin{tabular}{";
-    if($frame>1) { print "|" }
-    if($stacking>0) { print "r\|r\|r\|" }
-    else { print "r\|" }
-    print "\|r" x ($mmax-$mmin+1);
-    if($frame>0) { print "\|" }
-    print "}";
-    if($frame>1) { print "\\hline" }
-    print "\n";
-    if($stacking>0) { print "\\multicolumn{2}{r}{DSA}\&" }
-    for($m=$mmin;$m<=$mmax;$m++) { print "&$m" }
-    print "\\\\\\hline\\hline\n";
-    for($i=0;;$i++)
-    {
-      if($stacking>0)
-        { print "$s1&$s2&$s3" }
-      else
-        { print "\\entries{$s1}{$s2}{$s3}" }
-      unless($quiet) {print STDERR "$s1\|$s2\|$s3" }
-      for($m=$mmin;$m<=$mmax;$m++)
-      {
-        print "&"; &printprob;
-        unless($quiet) { print STDERR "." }
-      }
-      unless($quiet) { print STDERR "\n" }
-      $finish=&status_advance;
-      if(($finish)||($i==$breaking))
-      {
-        print $lastnewline;
-        last
-      }
-      print $innernewline;
-    }
-    print "\\end{tabular}\n";
-    unless($finish) { print "\n\\pagebreak\n" }
-  }
-}
-print "\n\\end{document}";
+print("\n\\end{document}");
 
 # End of the main program
 
 
-sub status_save    { $s1save=$s1; $s2save=$s2; $s3save=$s3 }
-sub status_restore { $s1=$s1save; $s2=$s2save; $s3=$s3save }
-sub status_advance
-{
-  if(++$s3>$smax)
-  {
-    if(++$s2>$smax)
-    {
-      if(++$s1>$smax)
-        { return 1 }
-      $s2=$s1;
-    }
-    $s3=$s2;
-  }
-  return ""
+sub status_save {
+	($s1save, $s2save, $s3save) = ($s1, $s2, $s3)
 }
 
-sub printprob
-{
-  local($result,$roundto,$minus);
-  if($draft)
-    { return "$draftentry" }
-  $result=&count;
-  $roundto=0;
-  if($round>0)
-  {
-    $roundto=80;
-    if($round<3)
-    {
-      if(($round==1)||($result<800))
-        { $roundto=8 }
-    }
-    $minus=$result % $roundto;
-    $result-=$minus;
-    if($minus>=$roundto/2)
-      { $result+=$roundto }
-    if(($round==2)&&($result>=800)) # Maybe we rounded UP to 10%!
-      { $roundto=80 }
-  }
-  $result/=80;
-  if($roundto==8)
-    { printf "%.1f",$result }
-  else
-    { print $result }
+sub status_restore {
+	($s1, $s2, $s3) = ($s1save, $s2save, $s3save)
 }
 
-sub count
-{
-  local($i1,$i2,$i3,$m1,$m2,$c);
-  $c=0;
-  if($m>=0)
-  {
-    for($i1=1;$i1<=20;$i1++)
-    {
-      if($i1>$s1+$m)   # Do we have lost, unless a double 1 occurs?
-      {
-        if($i1==1)     # Is another 1 sufficient?
-          { $c+=39 }   # 39=20+19
-        else
-          { $c++ }
-        next
-      }
-      $m1=$m;
-      if($i1>$s1)
-        { $m1-=$i1-$s1 }
-      for($i2=1;$i2<=20;$i2++)
-      {
-        if(($i1==1)&&($i2==1)) # Do we have a double 1?
-          { $c+=20; next }     # Bingo! All values of $i3 are wins!
-        next if(($i1==20)&&($i2==20));# Loose, if the first two die show 20.
-        if($i2>$s2+$m1)        # Do we have lost, unless a double 1 occurs?
-        {
-          if(($i1==1)||($i2==1)) # Do we have a 1 (actually precisely one 1!)
-            { $c++ }
-          next
-        }
-        $m2=$m1;
-        if($i2>$s2)
-          { $m2-=$i2-$s2 }
-        for($i3=1;$i3<=20;$i3++)
-        {
-          if($i3>$s3+$m2)      # Do we have lost, unless a double 1 occurs?
-          {
-            if($i3==1)
-            {
-              if(($i1==1)||($i2==1))
-                { $c++ }
-            }
-            next
-          }
-          # Now we have won, unless a double 20 occurs
-          if($i3==20) { next if(($i1==20)||($i2==20)) }
-          $c++
-        }
-      }
-    }
-  }
-  else # The game with negative modification:
-  {
-    for($i1=1;$i1<=20;$i1++)
-    {
-      if($i1>$s1)      # Do we have lost, unless a double 1 occurs?
-      {
-        if($i1==1)     # Is another 1 sufficient?
-          { $c+=39 }   # 39=20+19
-        else
-          { $c++ }
-        next
-      }
-      for($i2=1;$i2<=20;$i2++)
-      {
-        if(($i1==1)&&($i2==1)) # Do we have a double 1?
-          { $c+=20; next }     # Bingo! All values of $i3 are wins!
-        next if(($i1==20)&&($i2==20));# Loose, if the first two die show 20.
-        if($i2>$s2)    # Do we have lost, unless a double 1 occurs?
-        {
-          if(($i1==1)||($i2==1)) # Do we have a 1 (actually precisely one 1!)
-            { $c++ }
-          next
-        }
-        for($i3=1;$i3<=20;$i3++)
-        {
-          if(($i3>$s3)||($i1+$i2+$i3>$s1+$s2+$s3+$m)) # Do we have lost...?
-          {
-            if($i3==1)
-            {
-              if(($i1==1)||($i2==1))
-                { $c++ }
-            }
-            next
-          }
-          # Now we have won, unless a double 20 occurs
-          if($i3==20) { next if(($i1==20)||($i2==20)) }
-          $c++
-        }
-      }
-    }
-  }
-  return $c
+sub status_advance {
+	if(++$s3 > $smax) {
+		if(++$s2 > $smax) {
+			return 1 if(++$s1 > $smax);
+			$s2 = $s1
+		}
+		$s3 = $s2
+	}
+	''
+}
+
+sub printprob {
+	return $draftentry if($draft);
+	no integer;
+	my $result = &count();
+	my $roundto=0;
+	if($round > 0) {
+		$roundto = 80;
+		if($round < 3) {
+			if(($round == 1) || ($result < 800)) {
+				$roundto = 8
+			}
+		}
+		my $minus=$result % $roundto;
+		$result -= $minus;
+		if($minus >= ($roundto / 2)) {
+			$result += $roundto
+		}
+		if(($round == 2) && ($result >= 800)) {  # Maybe we rounded UP to 10%!
+			$roundto = 80
+		}
+	}
+	$result /= 80;
+	if($roundto == 8) {
+		printf("%.1f", $result)
+	} else {
+		print($result)
+	}
+}
+
+sub count {
+	(($m >= 0) ? &count_positive : &count_negative)
+}
+
+# The game with positive modification:
+sub count_positive {
+	my $c = 0;
+	for(my $i1 = 1; $i1 <= 20; ++$i1) {
+		if($i1 > $s1 + $m) {  # Do we have lost, unless a double 1 occurs?
+			if($i1 == 1) {  # Is another 1 sufficient?
+				$c += 39  # 39=20+19
+			} else {
+				++$c
+			}
+			next
+		}
+		my $m1 = (($i1 <= $s1) ? $m : $m - ($i1 - $s1));
+		for(my $i2 = 1; $i2 <= 20; ++$i2) {
+			if(($i1 == 1) && ($i2 == 1)) {  # Do we have a double 1?
+				$c += 20;  # Bingo! All values of $i3 are wins!
+				next
+			}
+			next if(($i1 == 20) && ($i2 == 20));  # Loose, if the first two die show 20.
+			if($i2 > $s2 + $m1) {  # Do we have lost, unless a double 1 occurs?
+				++$c if(($i1 == 1) || ($i2 == 1));  # Do we have a 1 (actually precisely one 1!)
+				next
+			}
+			my $m2 = (($i2 <= $s2) ? $m1 : $m1 - ($i2 - $s2));
+			for(my $i3 = 1; $i3 <= 20; ++$i3) {
+				if($i3 > $s3 + $m2) {  # Do we have lost, unless a double 1 occurs?
+					if($i3 == 1) {
+						++$c if(($i1 == 1) || ($i2 == 1))
+					}
+					next
+				}
+				# Now we have won, unless a double 20 occurs
+				if($i3 == 20) {
+					next if(($i1 == 20) || ($i2 == 20))
+				}
+				++$c
+			}
+		}
+	}
+	$c
+}
+
+# The game with negative modification:
+sub count_negative {
+	my $c = 0;
+	for(my $i1 = 1; $i1 <= 20; ++$i1) {
+		if($i1>$s1) {  # Do we have lost, unless a double 1 occurs?
+			if($i1==1) {  # Is another 1 sufficient?
+				$c += 39  # 39=20+19
+			} else {
+				++$c
+			}
+			next
+		}
+		for(my $i2=1; $i2 <= 20; ++$i2) {
+			if(($i1 == 1) && ($i2 == 1)) {  # Do we have a double 1?
+				$c += 20;  # Bingo! All values of $i3 are wins!
+				next
+			}
+			next if(($i1 == 20) && ($i2 == 20));  # Loose, if the first two die show 20.
+			if($i2 > $s2) {  # Do we have lost, unless a double 1 occurs?
+				if(($i1 == 1) || ($i2 == 1)) {  # Do we have a 1 (actually precisely one 1!)
+					++$c
+				}
+				next
+			}
+			for(my $i3 = 1; $i3 <= 20; ++$i3) {
+				if(($i3 > $s3) || ($i1 + $i2 + $i3 > $s1 + $s2 + $s3 + $m)) {  # Do we have lost...?
+					if($i3 == 1) {
+						++$c if(($i1 == 1) || ($i2 == 1))
+					}
+					next
+				}
+				# Now we have won, unless a double 20 occurs
+				if($i3 == 20) {
+					next if(($i1 == 20) || ($i2 == 20))
+				}
+				++$c
+			}
+		}
+	}
+	$c
 }
