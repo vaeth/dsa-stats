@@ -3,8 +3,8 @@
 Calculate probabilites for DSA (_Das schwarze Auge_)
 
 Author: Martin Väth (martin at mvath.de)
-
-This project is under a BSD type license
+This project is under the MIT License
+SPDX-License-Identifier: MIT
 
 For the role playing game _Das schwarze Auge_ (DSA), it is not easy to
 guess from the stat values and the modifiers the effective probabilities
